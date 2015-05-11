@@ -1,0 +1,398 @@
+<canvas id="bikeGameCanvas" width="600" height="600">
+  <img src="https://www.google.com/images/srpr/logo11w.png" alt="Google Logo">
+</canvas>
+<div id="speed">Speed: 0</div>
+<div>Distance traveled: <span id="distanceTraveled">0</span></div>
+<div id="roids"></div>
+
+<script>
+var BikeGame = function() {
+  var updateDistanceTraveled = function (increase /* boolean */) {
+    var val = parseInt(document.getElementById('distanceTraveled').innerHTML);
+    if (increase) {
+      val++;
+    } else {
+      val--;
+    }
+    document.getElementById('distanceTraveled').innerHTML = val;
+  };
+  var Screen = function(playerImg) {
+    var PIXEL_SIZE = 20; // needs to evenly divide into canvas size
+    this.PIXMAP_WIDTH = document.getElementById('bikeGameCanvas').width / PIXEL_SIZE;
+    this.PIXMAP_HEIGHT = document.getElementById('bikeGameCanvas').height / PIXEL_SIZE;
+    var context = document.getElementById('bikeGameCanvas').getContext('2d');
+    var pixmap = []; // PIXELs
+    var delta = []; // booleans: true if pixel should be painted at next refresh.
+
+    var roidsOn = false;
+
+    var PIXEL = {
+      DIRT: 0,
+      ROAD: 1,
+      PLAYER: 2
+    };
+
+    var PIXEL_DRAW_FN = {};
+    PIXEL_DRAW_FN[PIXEL.DIRT] = function(x, y) {
+      if (roidsOn) {
+        var r = Math.round(Math.random() * 255);
+        var g = Math.round(Math.random() * 255);
+        var b = Math.round(Math.random() * 255);
+        context.fillStyle = 'rgb(' + r + ', ' + g + ', ' + b + ')';
+      } else {
+        context.fillStyle = 'saddlebrown';
+      }
+      context.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+    };
+    PIXEL_DRAW_FN[PIXEL.ROAD] = function(x, y) {
+      context.fillStyle = 'white';
+      context.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+    };
+    PIXEL_DRAW_FN[PIXEL.PLAYER] = function(x, y) {
+      context.fillStyle = 'white';
+      // TODO probably not safe to assume the player is always on the road.
+      context.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+      context.drawImage(playerImg, 33, 127, 25, 25, x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+    };
+
+    for (var i = 0; i < this.PIXMAP_WIDTH; i++) {
+      pixmap.push([]);
+      delta.push([]);
+      for (var j = 0; j < this.PIXMAP_HEIGHT; j++) {
+        pixmap[i].push(PIXEL.ROAD)
+        delta[i].push(true);
+      }
+    }
+
+    var self = this;
+    document.addEventListener('startRoids', function() {
+      roidsOn = true;
+      for (var i = 0; i < delta.length; i++) {
+        for (var j = 0; j < delta[i].length; j++) {
+          delta[i][j] = true;
+        }
+      }
+    });
+    document.addEventListener('stopRoids', function() {
+      roidsOn = false;
+      for (var i = 0; i < delta.length; i++) {
+        for (var j = 0; j < delta[i].length; j++) {
+          delta[i][j] = true;
+        }
+      }
+    });
+
+
+    this.draw = function() {
+      var pixelsDrawn = 0;
+      for (var i = 0; i < pixmap.length; i++) {
+        for (var j = 0; j < pixmap[i].length; j++) {
+          if (delta[i][j]) {
+            PIXEL_DRAW_FN[pixmap[i][j]](i, j);
+            delta[i][j] = false;
+            pixelsDrawn++;
+          }
+        }
+      }
+      //console.log('pixels drawn: ' + pixelsDrawn);
+    };
+
+    this.updateRoad = function(roadArr) {
+      for (var i = 0; i < roadArr.length; i++) {
+        for (var j = 0; j < roadArr[i].length; j++) {
+          if (!roadArr[i][j] && pixmap[i][j] == PIXEL.PLAYER) {
+            var ev = new Event('playercrashed');
+            document.dispatchEvent(ev);
+          }
+          // only replace road & dirt locations; player & npcs shouldn't be overwritten by road updates.
+          if (!roadArr[i][j] && pixmap[i][j] == PIXEL.ROAD) {
+            pixmap[i][j] = PIXEL.DIRT;
+            delta[i][j] = true;
+          } else if (roadArr[i][j] && pixmap[i][j] == PIXEL.DIRT) {
+            pixmap[i][j] = PIXEL.ROAD;
+            delta[i][j] = true;
+          }
+        }
+      }
+      this.draw();
+    };
+
+    this.updatePlayer = function(x, y) {
+      // find existing player
+      // TODO inefficient
+      if (pixmap[x][y] == PIXEL.DIRT) {
+        var ev = new Event('playercrashed');
+        document.dispatchEvent(ev);
+      }
+      for (var i = 0; i < pixmap.length; i++) {
+        for (var j = 0; j < pixmap[i].length; j++) {
+          if (pixmap[i][j] == PIXEL.PLAYER) {
+            // TODO this may not be a safe assumption to make
+            pixmap[i][j] = PIXEL.ROAD;
+            delta[i][j] = true;
+          }
+        }
+      }
+      pixmap[x][y] = PIXEL.PLAYER;
+      delta[x][y] = true;
+      this.draw();
+    };
+
+    this.draw();
+  };
+
+  var Road = function(screen) {
+    this.screen = screen;
+
+    this.roadWidth = Math.round(.25 * this.screen.PIXMAP_HEIGHT);
+
+    this.speed = 0; // advances per second
+    this.speedUpdaterIntervalId;
+    this.playing = false;
+    this.lastMove = 0; // timestamp
+    this.pixelMap = []; // 20x20 array
+    this.lastRoadStart = null;
+    this.init = function() {
+      this.lastRoadStart = (.5 * this.screen.PIXMAP_HEIGHT) - (.5 * this.roadWidth);
+      for (var i = 0; i < this.screen.PIXMAP_WIDTH; i++) {
+        this.advanceRoad();
+      }
+      screen.updateRoad(this.pixelMap);
+
+      var self = this;
+      document.addEventListener('startRoids', function() {
+        self.roidify();
+      });
+      document.addEventListener('stopRoids', function() {
+        self.deroidify();
+      });
+    };
+    this.advanceRoad = function() {
+      if (this.pixelMap.length >= this.screen.PIXMAP_WIDTH) {
+        this.pixelMap.shift();
+        updateDistanceTraveled(true);
+      }
+      var randomNumber = Math.random();
+      if (randomNumber < .3) {
+        if (this.lastRoadStart - 1 >= 0) {
+          this.lastRoadStart--;
+        }
+      } else if (randomNumber < .6) {
+        if (this.lastRoadStart + this.roadWidth < this.screen.PIXMAP_HEIGHT) {
+          this.lastRoadStart++;
+        }
+      }
+      var nextRoadPiece = [];
+      for (var i = 0; i < this.screen.PIXMAP_HEIGHT; i++) {
+        nextRoadPiece.push(false);
+      }
+
+      for (var i = this.lastRoadStart; i < this.lastRoadStart + this.roadWidth; i++) {
+        nextRoadPiece[i] = true;
+      }
+      this.pixelMap.push(nextRoadPiece);
+    };
+
+    this.start = function() {
+      if (this.playing) {
+        return;
+      }
+      this.playing = true;
+      this.speed = 2;
+      document.getElementById('speed').innerHTML = 'Speed: ' + this.speed;
+      document.getElementById('distanceTraveled').innerHTML = 0;
+      var self = this;
+      this.speedUpdaterIntervalId = window.setInterval(function() {
+        self.speed++;
+        document.getElementById('speed').innerHTML = 'Speed: ' + self.speed;
+      }, 1000);
+      window.requestAnimationFrame(function advance(timestamp) {
+        if (timestamp >= self.lastMove + ((1 / self.speed) * 1000)) {
+          self.advanceRoad();
+          self.screen.updateRoad(self.pixelMap);
+          self.lastMove = timestamp;
+        }
+        if (self.playing) {
+          window.requestAnimationFrame(advance);
+        }
+      });
+    };
+
+    this.stop = function() {
+      this.playing = false;
+      window.clearInterval(this.speedUpdaterIntervalId);
+    };
+
+    this.roidify = function() {
+      this.speed = 500;
+      this.roadWidth = Math.round(.65 * this.screen.PIXMAP_HEIGHT);
+    };
+    this.deroidify = function() {
+      this.speed = 2;
+      this.roadWidth = Math.round(.25 * this.screen.PIXMAP_HEIGHT);
+    };
+  };
+  this.road = null;
+
+  var Biker = function(screen) {
+    this.screen = screen;
+    this.x = 1;
+    this.y = Math.round(this.screen.PIXMAP_HEIGHT / 2);
+    var leftrightlistener = function(ev) {
+      var moved = false;
+      if (ev.keyCode == 37 || ev.keyCode == 'A'.charCodeAt(0)) {
+        if (self.x - 1 >= 0) {
+          self.x--;
+          updateDistanceTraveled(false);
+          moved = true;
+        }
+      } else if (ev.keyCode == 39 || ev.keyCode == 'D'.charCodeAt(0)) {
+        if (self.x + 1 < self.screen.PIXMAP_WIDTH) {
+          self.x++;
+          updateDistanceTraveled(true);
+          moved = true;
+        }
+      }
+      if (moved) {
+        self.screen.updatePlayer(self.x, self.y);
+      }
+    };
+    var updownlistener = function(ev) {
+      var moved = false;
+      if (ev.keyCode == 38 || ev.keyCode == 'W'.charCodeAt(0)) {
+        if (self.y - 1 >= 0) {
+          self.y--;
+          moved = true;
+        }
+      } else if (ev.keyCode == 40 || ev.keyCode == 'S'.charCodeAt(0)) {
+        if (self.y + 1 < self.screen.PIXMAP_HEIGHT) {
+          self.y++;
+          moved = true;
+        }
+      }
+      if (moved) {
+        self.screen.updatePlayer(self.x, self.y);
+      }
+    };
+    this.init = function() {
+      this.screen.updatePlayer(this.x, this.y);
+      // Always allowed to move up/down.
+      document.addEventListener('keydown', updownlistener);
+    }
+    var self = this;
+
+    this.start = function() {
+      document.addEventListener('keydown', leftrightlistener);
+    };
+
+    this.stop = function() {
+      document.removeEventListener('keydown', leftrightlistener);
+    };
+  };
+  this.biker = null;
+
+  var RoidsDispenser = function() {
+    this.timeLeftToReady = -1;
+    this.roidsTimeLeft = -1;
+    this.intervalId = undefined;
+    var roidsUsed = 0;
+    var INITIAL_RELOAD_TIME = 10;
+    var ROIDS_TIME = 5;
+    this.start = function() {
+      this.timeLeftToReady = INITIAL_RELOAD_TIME;
+      this.roidsTimeLeft = -1;
+      roidsUsed = 0;
+      var self = this;
+      if (!this.intervalId) {
+        this.intervalId = window.setInterval(function() {
+          if (self.timeLeftToReady > 0) {
+            self.timeLeftToReady--;
+          }
+          if (self.roidsTimeLeft > 0) {
+            self.roidsTimeLeft--;
+          }
+          if (self.roidsTimeLeft == 0) {
+            var ev = new Event('stopRoids');
+            document.dispatchEvent(ev);
+            self.timeLeftToReady = INITIAL_RELOAD_TIME + (5 * roidsUsed);
+            self.roidsTimeLeft = -1;
+          }
+          if (self.timeLeftToReady == -1) {
+            document.getElementById('roids').innerHTML = 'ON ROIDS!!!!';
+          } else if (self.timeLeftToReady == 0) {
+            document.getElementById('roids').innerHTML = 'Press R for roids!';
+          } else {
+            document.getElementById('roids').innerHTML = 'Time left to roids: ' + self.timeLeftToReady;
+          }
+        }, 1000);
+      }
+      document.addEventListener('keypress', function(ev) {
+        if (ev.charCode == 'r'.charCodeAt(0) || ev.charCode == 'R'.charCodeAt(0)) {
+          if (self.timeLeftToReady == 0) {
+            var ev = new Event('startRoids');
+            document.dispatchEvent(ev);
+            self.roidsTimeLeft = ROIDS_TIME;
+            self.timeLeftToReady = -1;
+            roidsUsed++;
+          }
+        }
+      });
+      document.addEventListener('playercrashed', function(ev) {
+        self.stop();
+      });
+    };
+    this.stop = function() {
+      window.clearInterval(this.intervalId);
+      this.intervalId = undefined;
+      this.timeLeftToReady = INITIAL_RELOAD_TIME;
+      this.roidsTimeLeft = -1;
+      var ev = new Event('stopRoids');
+      document.dispatchEvent(ev);
+    };
+  };
+  this.roidsDispenser = new RoidsDispenser();
+
+  this.init = function() {
+    var self = this;
+    //this.road.init();
+
+    var pokeImg = new Image();
+    pokeImg.onload = function() {
+      self.pokeImgLoaded = true;
+      self.screen = new Screen(this);
+      self.biker = new Biker(self.screen);
+      self.biker.init(self.screen);
+      self.road = new Road(self.screen);
+      self.road.init();
+    };
+    pokeImg.src = "pokemon.png";
+
+    document.addEventListener('keypress', function(ev) {
+      if (ev.charCode == ' '.charCodeAt(0)) {
+        if (!self.pokeImgLoaded) {
+          return;
+        }
+        if (!self.road.playing) {
+          self.road.start();
+          self.biker.start();
+          self.roidsDispenser.start();
+        }
+      }
+    });
+
+    document.addEventListener('playercrashed', function() {
+      self.road.stop();
+      self.biker.stop();
+      self.roidsDispenser.stop();
+    });
+  };
+};
+var bikeGame = new BikeGame();
+bikeGame.init();
+</script>
+
+<style>
+#bikeGameCanvas {
+  border: 1px solid black;
+}
+</style>

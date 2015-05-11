@@ -1,0 +1,185 @@
+<div id="mainMenu">
+  <h1>Doodle</h1>
+  <a class="button" href="/static/bike.html">Bike game</a>
+  <div class="button" onclick="loadLiftingGame">Weightlifting game</div>
+  <div class="button" onclick="loadBaseballGame">Baseball game</div>
+</div>
+
+<canvas id="canvas" width="600" height="600">
+  <img src="https://www.google.com/images/srpr/logo11w.png" alt="Google Logo">
+</canvas>
+
+<script>
+var Coordinate = function(x, y) {
+  this.x = x;
+  this.y = y;
+};
+
+var canvas = document.getElementById('canvas');
+var context = canvas.getContext('2d');
+
+var img = new Image();
+img.onload = function() {
+  //context.drawImage(this, 75, 7, 67, 123, 50, 50, 67, 123);
+};
+img.src = "batter.gif";
+//document.body.appendChild(img);
+
+var drawBaseball = function(x, y) {
+  console.log('trying to draw baseball');
+  context.beginPath();
+  context.arc(x, y, 5, 0, Math.PI*2, true);
+  context.stroke();
+  context.closePath();
+  //context.drawImage(img, 64, 135, 67, 123, 150, 50, 67, 123);
+};
+
+var Pitcher = function() {
+  this.isPitching = false;
+}
+
+Pitcher.prototype.pitch = function() {
+  console.log('trying to pitch!');
+  if (this.isPitching) {
+    console.log('not pitching because already pitching');
+    return;
+  } else {
+    console.log('contiuing with pitch');
+  }
+
+  this.isPitching = true;
+
+  var baseballX = canvas.width;
+  var baseballY = canvas.height / 2;
+
+  var self = this;
+  function updateBaseball() {
+    //context.clearRect(0, 0, 500, 500);
+    drawBaseball(baseballX, baseballY);
+    baseballX--;
+    if (baseballX > 0) {
+      window.requestAnimationFrame(updateBaseball);
+    } else {
+      self.isPitching = false;
+    }
+  }
+
+  updateBaseball();
+
+  this.isPitching = true;
+};
+
+var p = new Pitcher();
+//p.pitch();
+
+
+function wrapper() {
+  p.pitch();
+}
+//window.setInterval(wrapper, 5000);
+
+var Batter = function() {
+  this.isLoaded = false;
+  this.isSwinging = false;
+  this.sprite = null;
+  this.spriteX = 50;
+  this.spriteY = 50;
+  this.load = function() {
+    this.sprite = new Image();
+    var self = this;
+    this.sprite.onload = function() {
+      context.drawImage(self.sprite, 75, 7, 67, 123, self.spriteX, self.spriteY, 67, 123);
+      self.isLoaded = true;
+      var ev = new Event('objload');
+      document.dispatchEvent(ev);
+    };
+    this.sprite.src = "batter.gif";
+    document.addEventListener('keypress', function(ev) {
+      console.log(ev);
+      if (ev.charCode == 's'.charCodeAt(0) || ev.charCode == 'S'.charCodeAt(0)) {
+        self.swing();
+      }
+    });
+  };
+  this.swing = function() {
+    console.log('SWING');
+  };
+};
+
+var batter = new Batter();
+//batter.load();
+
+document.addEventListener('objload', function() {
+  var everythingLoaded = true;
+  if (!batter.isLoaded) {
+    everythingLoaded = false;
+  }
+  if (everythingLoaded) {
+    //startGame();
+  }
+  console.log('something loaded');
+});
+
+
+
+var Lifter = function() {
+  this.headOffset = new Coordinate(200, 200);
+  this.onRoids = false;
+  this.draw = function() {
+    context.beginPath();
+    //context.arc(this.headOffset.x, this.headOffset.y, 30, 0, Math.PI*2, false);
+    //context.fillRect(this.headOffset.x - 30, this.headOffset.y + 30, 60, 120);
+    //context.moveTo(350, 300);
+    //context.bezierCurveTo(273, 280, 252, 378, 350, 430);
+    //context.stroke();
+    this.drawTorso(-77, 69);
+    this.drawHead(-78, -8);
+  };
+
+  this.drawTorso = function(xoff, yoff) {
+    context.beginPath();
+    context.moveTo(276 + xoff, 161 + yoff);
+    context.bezierCurveTo(176 + xoff, 160 + yoff, 198 + xoff, 249 + yoff, 249 + xoff, 312 + yoff);
+    context.bezierCurveTo(258 + xoff, 324 + yoff, 292 + xoff, 328 + yoff, 305 + xoff, 312 + yoff);
+    context.bezierCurveTo(363 + xoff, 241 + yoff, 387 + xoff, 158 + yoff, 276 + xoff, 161 + yoff);
+    context.stroke();
+  };
+
+  this.drawHead = function(xoff, yoff) {
+    context.beginPath();
+    context.moveTo(276 + xoff, 161 + yoff);
+    context.bezierCurveTo(234 + xoff, 162 + yoff, 247 + xoff, 213 + yoff, 264 + xoff, 232 + yoff);
+    context.bezierCurveTo(271 + xoff, 240 + yoff, 280 + xoff, 243 + yoff, 290 + xoff, 232 + yoff);
+    context.bezierCurveTo(307 + xoff, 214 + yoff, 324 + xoff, 162 + yoff, 276 + xoff, 161 + yoff);
+    context.stroke();
+  };
+
+};
+
+var lifter = new Lifter();
+//lifter.draw();
+
+
+// MAIN MENU
+
+function loadBikeGame() {
+  console.log('here');
+  document.getElementById('mainMenu').style.display = 'none';
+  document.getElementById('bikeGame').style.display = 'block';
+  bikeGame.init();
+};
+
+
+// DEBUG STUFF
+
+canvas.addEventListener('click', function(ev) {
+  console.log(ev.offsetX + ', ' + ev.offsetY);
+});
+
+</script>
+
+<style>
+#canvas {
+  border: 1px solid black;
+}
+</style>
